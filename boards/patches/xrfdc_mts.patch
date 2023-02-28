@@ -1,0 +1,180 @@
+diff --git a/sdbuild/packages/xrfdc/package/Makefile b/sdbuild/packages/xrfdc/package/Makefile
+index 2fc69230..9cb219f5 100644
+--- a/sdbuild/packages/xrfdc/package/Makefile
++++ b/sdbuild/packages/xrfdc/package/Makefile
+@@ -25,7 +25,7 @@ $(LIBRARY): $(EMBEDDEDSW_DIR) $(LIB_METAL_INC)
+ 
+ install:
+ 	cp $(LIBRARY) $(PACKAGE)/
+-	pip3 install .
++	pip3 install . --upgrade
+ 
+ $(EMBEDDEDSW_DIR):
+ 	git clone https://github.com/Xilinx/embeddedsw \
+diff --git a/sdbuild/packages/xrfdc/package/setup.py b/sdbuild/packages/xrfdc/package/setup.py
+index 620fff69..9dadb4d8 100644
+--- a/sdbuild/packages/xrfdc/package/setup.py
++++ b/sdbuild/packages/xrfdc/package/setup.py
+@@ -12,14 +12,12 @@ long_description = (''.join(readme_lines))
+ 
+ setup(
+     name="xrfdc",
+-    version='1.0',
++    version='2.0',
+     description="Driver for the RFSoC RF Data Converter IP",
+     long_description=long_description,
+     long_description_content_type='text/markdown',
+     url='https://github.com/Xilinx/PYNQ/tree/master/sdbuild/packages/xrfdc',
+     license='BSD 3-Clause',
+-    author="Craig Ramsay",
+-    author_email="cramsay01@gmail.com",
+     packages=['xrfdc'],
+     package_data={
+         '': ['*.py', '*.so', '*.c'],
+diff --git a/sdbuild/packages/xrfdc/package/xrfdc/__init__.py b/sdbuild/packages/xrfdc/package/xrfdc/__init__.py
+index edddc3e2..83f66bb4 100644
+--- a/sdbuild/packages/xrfdc/package/xrfdc/__init__.py
++++ b/sdbuild/packages/xrfdc/package/xrfdc/__init__.py
+@@ -1,7 +1,6 @@
+ #   Copyright (c) 2018, Xilinx, Inc.
+ #   SPDX-License-Identifier: BSD-3-Clause
+ 
+-
+ import cffi
+ import os
+ import pynq
+@@ -9,8 +8,6 @@ import warnings
+ from wurlitzer import pipes
+ 
+ 
+-
+-
+ _THIS_DIR = os.path.dirname(__file__)
+ 
+ with open(os.path.join(_THIS_DIR, 'xrfdc_functions.c'), 'r') as f:
+@@ -349,15 +346,6 @@ class RFdcAdcTile(RFdcTile):
+ 
+ 
+ class RFdc(pynq.DefaultIP):
+-    """The class RFdc is bound to the IP xilinx.com:ip:usp_rf_data_converter:2.3,
+-    xilinx.com:ip:usp_rf_data_converter:2.4 or xilinx.com:ip:usp_rf_data_converter:2.6.
+-    Once the overlay is loaded, the data converter IP will be allocated the driver
+-    code implemented in this class.
+-
+-    For a complete list of wrapped functions see:
+-    https://github.com/Xilinx/PYNQ/tree/master/sdbuild/packages/xrfdc/package
+-    """
+-    
+     bindto = ["xilinx.com:ip:usp_rf_data_converter:2.6",
+               "xilinx.com:ip:usp_rf_data_converter:2.4", 
+               "xilinx.com:ip:usp_rf_data_converter:2.3"]
+@@ -378,10 +366,22 @@ class RFdc(pynq.DefaultIP):
+         _lib.XRFdc_CfgInitialize(self._instance, self._config)
+         self.adc_tiles = [RFdcAdcTile(self, i) for i in range(4)]
+         self.dac_tiles = [RFdcDacTile(self, i) for i in range(4)]
++        self.mts_adc_config = _ffi.new('XRFdc_MultiConverter_Sync_Config*')
++        self.mts_dac_config = _ffi.new('XRFdc_MultiConverter_Sync_Config*')
++        _safe_wrapper("XRFdc_MultiConverter_Init", self.mts_adc_config, cffi.FFI.NULL, cffi.FFI.NULL)
++        _safe_wrapper("XRFdc_MultiConverter_Init", self.mts_dac_config, cffi.FFI.NULL, cffi.FFI.NULL)
++
+ 
+     def _call_function(self, name, *args):
+         _safe_wrapper(f"XRFdc_{name}", self._instance, *args)
+ 
++    def mts_adc(self):
++        return _safe_wrapper("XRFdc_MultiConverter_Sync", self._instance, 0, self.mts_adc_config)
++        
++    def mts_dac(self):
++        return _safe_wrapper("XRFdc_MultiConverter_Sync", self._instance, 1, self.mts_dac_config)
++        
++
+ 
+ # Finally we can add our data-driven properties to each class in the hierarchy
+ 
+@@ -448,6 +448,3 @@ TRSHD_OFF                  = 0x0
+ TRSHD_STICKY_OVER          = 0x1
+ TRSHD_STICKY_UNDER         = 0x2
+ TRSHD_HYSTERISIS           = 0x3
+-
+-
+-
+diff --git a/sdbuild/packages/xrfdc/package/xrfdc/xrfdc_functions.c b/sdbuild/packages/xrfdc/package/xrfdc/xrfdc_functions.c
+index ef80b9ff..8761e936 100644
+--- a/sdbuild/packages/xrfdc/package/xrfdc/xrfdc_functions.c
++++ b/sdbuild/packages/xrfdc/package/xrfdc/xrfdc_functions.c
+@@ -80,6 +80,44 @@ typedef struct {
+ 	XRFdc_Distribution DistributionStatus[8];
+ } XRFdc_Distribution_Settings;
+ 
++/**
++ * MTS DTC Settings.
++ */
++typedef struct {
++	u32 RefTile;
++	u32 IsPLL;
++	int Target[4];
++	int Scan_Mode;
++	int DTC_Code[4];
++	int Num_Windows[4];
++	int Max_Gap[4];
++	int Min_Gap[4];
++	int Max_Overlap[4];
++} XRFdc_MTS_DTC_Settings;
++
++/**
++ * MTS Sync Settings.
++ */
++typedef struct {
++	u32 RefTile;
++	u32 Tiles;
++	int Target_Latency;
++	int Offset[4];
++	int Latency[4];
++	int Marker_Delay;
++	int SysRef_Enable;
++	XRFdc_MTS_DTC_Settings DTC_Set_PLL;
++	XRFdc_MTS_DTC_Settings DTC_Set_T1;
++} XRFdc_MultiConverter_Sync_Config;
++
++/**
++ * MTS Marker Struct.
++ */
++typedef struct {
++	u32 Count[4];
++	u32 Loc[4];
++} XRFdc_MTS_Marker;
++
+ /**
+  * ADC Signal Detect Settings.
+  */
+@@ -412,6 +450,8 @@ typedef struct {
+ } XRFdc;
+ 
+ 
++
++
+ /***************** Macros (Inline Functions) Definitions *********************/
+ #define XRFDC_ADC_TILE 0U
+ #define XRFDC_DAC_TILE 1U
+@@ -517,4 +557,6 @@ u32 XRFdc_GetDSA(XRFdc *InstancePtr, u32 Tile_Id, u32 Block_Id, XRFdc_DSA_Settin
+ u32 XRFdc_SetPwrMode(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id, XRFdc_Pwr_Mode_Settings *SettingsPtr);
+ u32 XRFdc_GetPwrMode(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id, XRFdc_Pwr_Mode_Settings *SettingsPtr);
+ u32 XRFdc_ResetInternalFIFOWidth(XRFdc *InstancePtr, u32 Type, u32 Tile_Id, u32 Block_Id);
+-u32 XRFdc_ResetInternalFIFOWidthObs(XRFdc *InstancePtr, u32 Tile_Id, u32 Block_Id);
+\ No newline at end of file
++u32 XRFdc_ResetInternalFIFOWidthObs(XRFdc *InstancePtr, u32 Tile_Id, u32 Block_Id);
++u32 XRFdc_MultiConverter_Sync(XRFdc *InstancePtr, u32 Type, XRFdc_MultiConverter_Sync_Config *ConfigPtr);
++void XRFdc_MultiConverter_Init(XRFdc_MultiConverter_Sync_Config *ConfigPtr, int *PLL_CodesPtr, int *T1_CodesPtr);
+\ No newline at end of file
+diff --git a/sdbuild/packages/xrfdc/qemu.sh b/sdbuild/packages/xrfdc/qemu.sh
+index bbb35c29..a6fa79aa 100755
+--- a/sdbuild/packages/xrfdc/qemu.sh
++++ b/sdbuild/packages/xrfdc/qemu.sh
+@@ -9,7 +9,6 @@ set -e
+ for f in /etc/profile.d/*.sh; do source $f; done
+ 
+ export HOME=/root
+-export BOARD=${PYNQ_BOARD}
+ 
+ cd /root/xrfdc_build
+ 
