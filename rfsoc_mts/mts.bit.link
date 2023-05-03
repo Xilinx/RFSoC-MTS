@@ -1,4 +1,8 @@
 {
+    "RFSoC4x2": {
+        "url": "https://www.xilinx.com/bin/public/openDownload?filename=mts_RFSoC4x2_100.bit",
+        "md5sum": "2f05645fe5c50a9d50d3a9e39da1ce58"
+	},
     "ZCU208": {
         "url": "https://www.xilinx.com/bin/public/openDownload?filename=mts_ZCU208_101.bit",
         "md5sum": "a310917a44750475941668fd7d6a814f"

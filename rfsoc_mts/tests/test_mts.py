@@ -1,12 +1,22 @@
 from rfsoc_mts import mtsOverlay
 import numpy as np
+import os
 from scipy import signal
 
 def test_mts():
-    ol = mtsOverlay('mts.bit')
-    ol.verify_clock_tree()
+    board_name = os.environ['BOARD']
+    LMK_FREQ = 500.0
+    LMX_FREQ = 4000.0
     ACTIVE_DAC_TILES = 0b0011
     ACTIVE_ADC_TILES = 0b0011
+    if (board_name == 'RFSoC4x2'):
+        LMK_FREQ = 500.0
+        LMX_FREQ = 500.0
+        ACTIVE_DAC_TILES = 0b0101
+        ACTIVE_ADC_TILES = 0b0101
+    # this test does not require the devicetree overlay (dtbo)
+    ol = mtsOverlay('mts.bit', LMK_FREQ, LMX_FREQ)
+    ol.verify_clock_tree()
     DAC_SR = 4.0E9  # Sample rate of DACs and ADCs is 4.0 GHz
     Fc = 250.0E6 # Set center frequency of waveform to 250.0 MHz
     DAC_Amplitude = 16383.0 # 14bit DAC +16383/-16384
