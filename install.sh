@@ -2,7 +2,6 @@
 # Copyright (C) 2023 Advanced Micro Devices, Inc
 # SPDX-License-Identifier: MIT
 # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
-
 #!/bin/bash
 
 # Build MTS necessary patch to xrfdc package
@@ -20,7 +19,7 @@ cd ..
 # Create a device-tree overlay to access PL-DRAM
 sudo apt-get update -y
 sudo apt-get install -y device-tree-compiler
-cd boards/ZCU208/dts
+cd boards/$BOARD/dts
 make
 cp ddr4.dtbo ../../../rfsoc_mts/
 cd ../../..
@@ -28,3 +27,4 @@ cd ../../..
 # Install python package and notebook
 python3 -m pip install . --no-build-isolation
 pynq-get-notebooks RFSoC-MTS -p $PYNQ_JUPYTER_NOTEBOOKS
+echo "$BOARD Ready..."

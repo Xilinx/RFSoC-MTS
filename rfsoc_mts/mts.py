@@ -9,16 +9,28 @@ import xrfdc
 import numpy as np
 import time
 import os
+import subprocess
 
 MODULE_PATH = os.path.dirname(os.path.realpath(__file__))
-LMK_FREQ = 500.0
-LMX_FREQ = 4000.0
 CLOCKWIZARD_LOCK_ADDRESS = 0x0004
 CLOCKWIZARD_RESET_ADDRESS = 0x0000
 CLOCKWIZARD_RESET_TOKEN = 0x000A
 MTS_START_TILE = 0x01
 MAX_DAC_TILES = 4
 MAX_ADC_TILES = 4
+DAC_REF_TILE = 2
+ADC_REF_TILE = 2
+DEVICETREE_OVERLAY_FOR_PLDRAM = 'ddr4.dtbo'
+
+RFSOC4X2_LMK_FREQ = 500.0
+RFSOC4X2_LMX_FREQ = 500.0
+RFSOC4X2_DAC_TILES = 0b0101
+RFSOC4X2_ADC_TILES = 0b0101
+
+ZCU208_LMK_FREQ = 500.0
+ZCU208_LMX_FREQ = 4000.0
+ZCU208_DAC_TILES = 0b0011
+ZCU208_ADC_TILES = 0b0011
 
 class mtsOverlay(Overlay):
     """
@@ -34,16 +46,44 @@ class mtsOverlay(Overlay):
          memories and the PL-DDR4 memory.  In addition to the bitfile_name, the active ADC and DAC
          tiles must be provided to use in the MTS initialization.
         """
-        dts = pynq.DeviceTreeSegment(resolve_binary_path('ddr4.dtbo'))
+        board = os.getenv('BOARD') 
+        # Run lsmod command to get the loaded modules list
+        output = subprocess.check_output(['lsmod'])
+        # Check if "zocl" is present in the output
+        if b'zocl' in output:
+            # If present, remove the module using rmmod command
+            rmmod_output = subprocess.run(['rmmod', 'zocl'])
+            # Check return code
+            assert rmmod_output.returncode == 0, "Could not restart zocl. Please Shutdown All Kernels and then restart"
+            # If successful, load the module using modprobe command
+            modprobe_output = subprocess.run(['modprobe', 'zocl'])
+            assert modprobe_output.returncode == 0, "Could not restart zocl. It did not restart as expected"
+        else:
+            modprobe_output = subprocess.run(['modprobe', 'zocl'])
+            # Check return code
+            assert modprobe_output.returncode == 0, "Could not restart ZOCL!"
+
+        dts = pynq.DeviceTreeSegment(resolve_binary_path(DEVICETREE_OVERLAY_FOR_PLDRAM))
         if not dts.is_dtbo_applied():
             dts.insert()
-        # must configure CLK104 before loading overlay since the overlay needs
+        # must configure clock synthesizers 
         # the LMK04828 PL_CLK and PL_SYSREF clocks
-        xrfclk.set_ref_clks(lmk_freq = LMK_FREQ, lmx_freq = LMX_FREQ)
+        if board == 'RFSoC4x2':
+            xrfclk.set_ref_clks(lmk_freq = RFSOC4X2_LMK_FREQ, lmx_freq = RFSOC4X2_LMX_FREQ)
+            self.ACTIVE_DAC_TILES = RFSOC4X2_DAC_TILES
+            self.ACTIVE_ADC_TILES = RFSOC4X2_ADC_TILES
+        elif board == 'ZCU208':
+            xrfclk.set_ref_clks(lmk_freq = ZCU208_LMK_FREQ, lmx_freq = ZCU208_LMX_FREQ)
+            self.ACTIVE_DAC_TILES = ZCU208_DAC_TILES
+            self.ACTIVE_ADC_TILES = ZCU208_ADC_TILES
+        else:
+            assert false, "Board Not Supported"
         time.sleep(0.5)        
         super().__init__(resolve_binary_path(bitfile_name), **kwargs)
         self.xrfdc = self.usp_rf_data_converter_1       
-        
+        self.xrfdc.mts_dac_config.RefTile = DAC_REF_TILE  # DAC tile distributing reference clock
+        self.xrfdc.mts_adc_config.RefTile = ADC_REF_TILE  # ADC                
+
         # map PL GPIO registers
         self.dac_enable =  self.gpio_control.axi_gpio_dac.channel1[0]       
         self.trig_cap = self.gpio_control.axi_gpio_bram_adc.channel1[0]
@@ -75,54 +115,48 @@ class mtsOverlay(Overlay):
         ipmmio = MMIO(baseAddress, mem_range)
         return ipmmio.array[0:ipmmio.length].view(dtype)
 
-    def sync_tiles(self, dacTiles=0, adcTiles=0):
+    def sync_tiles(self, dacTarget=-1, adcTarget=-1):
         """ Configures RFSoC MTS alignment"""
         # Set which RF tiles use MTS and turn MTS off
-        # check settings of the adc and dac tiles before continuing
-        if (adcTiles > ((1 << MAX_ADC_TILES)-1)):
-            raise Exception("Illegal number of ADC tiles given")
-        if (dacTiles > ((1 << MAX_DAC_TILES)-1)):
-            raise Exception("Illegal number of ADC tiles given")        
-        if ((adcTiles == 0) & (dacTiles == 0)):
-            raise Exception("No active ADC or DAC tiles specified!")
-        if ((adcTiles & 0x01) == 0):
-            raise Exception("MTS chain required to start at ADC Tile 0 / Bank 224")
-        if ((dacTiles & 0x01) == 0):
-            raise Exception("MTS chain required to start at DAC Tile 0 / Bank 228")
-        self.xrfdc.mts_dac_config.RefTile = 0  # MTS starts at DAC Tile 228
-        self.xrfdc.mts_adc_config.RefTile = 0  # MTS starts at ADC Tile 224
-        self.xrfdc.mts_dac_config.Target_Latency = -1
-        self.xrfdc.mts_adc_config.Target_Latency = -1
-        if dacTiles > 0:
-            self.xrfdc.mts_dac_config.Tiles = dacTiles # group defined in binary 0b1111
+        if self.ACTIVE_DAC_TILES > 0:
+            self.xrfdc.mts_dac_config.Tiles = self.ACTIVE_DAC_TILES # group defined in binary 0b1111
             self.xrfdc.mts_dac_config.SysRef_Enable = 1
+            self.xrfdc.mts_dac_config.Target_Latency = dacTarget 
             self.xrfdc.mts_dac()
         else:
             self.xrfdc.mts_dac_config.Tiles = 0x0
             self.xrfdc.mts_dac_config.SysRef_Enable = 0
-        if adcTiles > 0:
-            self.xrfdc.mts_adc_config.Tiles = adcTiles 
+        if self.ACTIVE_ADC_TILES > 0:
+            self.xrfdc.mts_adc_config.Tiles = self.ACTIVE_ADC_TILES
             self.xrfdc.mts_adc_config.SysRef_Enable = 1
+            self.xrfdc.mts_adc_config.Target_Latency = adcTarget
             self.xrfdc.mts_adc()
         else:
             self.xrfdc.mts_adc_config.Tiles = 0x0
             self.xrfdc.mts_adc_config.SysRef_Enable = 0
 
-    def init_tile_sync(self, adcTiles=0, dacTiles=0):
+    def init_tile_sync(self):
         """ Resets the MTS alignment engine"""
-        self.sync_tiles(MTS_START_TILE, MTS_START_TILE)
+        self.xrfdc.mts_dac_config.Tiles = 0b0001 # turn only one tile on first
+        self.xrfdc.mts_adc_config.Tiles = 0b0001
+        self.xrfdc.mts_dac_config.SysRef_Enable = 1
+        self.xrfdc.mts_adc_config.SysRef_Enable = 1
+        self.xrfdc.mts_dac_config.Target_Latency = -1
+        self.xrfdc.mts_adc_config.Target_Latency = -1
+        self.xrfdc.mts_dac()
+        self.xrfdc.mts_adc()
         # Reset MTS ClockWizard MMCM - refer to PG065
         self.clocktreeMTS.MTSclkwiz.mmio.write_reg(CLOCKWIZARD_RESET_ADDRESS, CLOCKWIZARD_RESET_TOKEN)
         time.sleep(0.1)
         # Reset only user selected DAC tiles
-        bitvector = dacTiles
+        bitvector = self.ACTIVE_DAC_TILES
         for n in range(MAX_DAC_TILES):
             if (bitvector & 0x1):
                 self.xrfdc.dac_tiles[n].Reset()
             bitvector = bitvector >> 1
         # Reset ADC FIFO of only user selected tiles - restarts MTS engine
         for toggleValue in range(0,1):
-            bitvector = adcTiles
+            bitvector = self.ACTIVE_ADC_TILES
             for n in range(MAX_ADC_TILES):
                 if (bitvector & 0x1):
                     self.xrfdc.adc_tiles[n].SetupFIFOBoth(toggleValue)

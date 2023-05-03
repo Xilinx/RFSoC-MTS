@@ -2,7 +2,10 @@
 # Copyright (C) 2023 Advanced Micro Devices, Inc
 # SPDX-License-Identifier: MIT
 # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
-__version__ = "1.0.1"
+NAME = ddr4
 
-from .mts import mtsOverlay
-# -------------------------------------------------------------------------------------------------
+all:
+	dtc -I dts -O dtb -o $(NAME).dtbo $(NAME).dts -q
+
+clean:
+	rm -rf $(NAME).dtbo
