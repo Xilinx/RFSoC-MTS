@@ -1,0 +1,24 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (C) 2023 Advanced Micro Devices, Inc
+// SPDX-License-Identifier: MIT
+// ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
+
+/dts-v1/;
+/plugin/;
+/ {
+        /*reserved memory*/
+        fragment@1 {
+                target-path = "/";
+                overlay1: __overlay__ {
+                        reserved-memory {
+                                ranges;
+                                reserved {
+                                        reg = <0x05 0x00 0x01 0x00>;
+                                };
+				reserved_bram {
+					reg = <0x00 0xA0000000 0x00 0xA0000>;
+				};
+                        };
+                };            
+        };
+};

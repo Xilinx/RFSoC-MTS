@@ -32,6 +32,11 @@ ZCU208_LMX_FREQ = 4000.0
 ZCU208_DAC_TILES = 0b0011
 ZCU208_ADC_TILES = 0b0011
 
+ZCU216_LMK_FREQ = 245.76
+ZCU216_LMX_FREQ = 491.52
+ZCU216_DAC_TILES = 0b1111
+ZCU216_ADC_TILES = 0b1111
+
 class mtsOverlay(Overlay):
     """
     The MTS overlay demonstrates the RFSoC multi-tile synchronization capability that enables
@@ -76,6 +81,10 @@ class mtsOverlay(Overlay):
             xrfclk.set_ref_clks(lmk_freq = ZCU208_LMK_FREQ, lmx_freq = ZCU208_LMX_FREQ)
             self.ACTIVE_DAC_TILES = ZCU208_DAC_TILES
             self.ACTIVE_ADC_TILES = ZCU208_ADC_TILES
+        elif board == 'ZCU216':
+            xrfclk.set_ref_clks(lmk_freq = ZCU216_LMK_FREQ, lmx_freq = ZCU216_LMX_FREQ)
+            self.ACTIVE_DAC_TILES = ZCU216_DAC_TILES
+            self.ACTIVE_ADC_TILES = ZCU216_ADC_TILES
         else:
             assert false, "Board Not Supported"
         time.sleep(0.5)        
