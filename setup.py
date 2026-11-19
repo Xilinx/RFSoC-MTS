@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------------------------
-# Copyright (C) 2023 Advanced Micro Devices, Inc
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc
 # SPDX-License-Identifier: MIT
 # ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- --
 from pynqutils.setup_utils import build_py, find_version, extend_package
@@ -73,7 +73,6 @@ setup(
     },
     python_requires=">=3.10.0",
     install_requires=[
-        "xrfdc==2.0",
         "pynqutils",
         "matplotlib",
         "ipython"

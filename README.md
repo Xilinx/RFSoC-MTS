@@ -1,6 +1,14 @@
 <img src="./images/AMD_Zynq_RFSoC.png" width="33%"/>
 
 # RFSOC-PYNQ Multi-Tile Synchronization Overlay
+
+> **Archived:** This repository is no longer maintained. Use the
+> [Strath-SDR MTS reference design](https://github.com/strath-sdr/rfsoc_mts)
+> example design instead. Follow that repository's instructions for supported boards,
+> PYNQ versions, and installation requirements.
+>
+> The original design and instructions below are retained for reference.
+
 This repository hosts an RFSoC overlay compatible with [PYNQ image v3.0.1](https://github.com/Xilinx/PYNQ/releases).  Multi-tile synchronization (MTS) is an important capability of the RFSoC enabling beamforming, phased RADAR arrays, massive MIMO and more.  This overlay demonstrates 4GS MTS capabilities by using a waveform generator to broadcast out two DAC tiles.  The DAC channels are wired to loopback to ADCs.  ADC samples are captured with and without MTS enabled. The effect is shown in the figure below.
 
 <img src="./images/MTSbenefit.png" width="90%"/>
